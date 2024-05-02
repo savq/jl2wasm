@@ -1,0 +1,4 @@
+# Julia indents with spaces, but Pluto uses tabs by default
+[*.nb.jl]
+indent_style = tab
+indent_size = 4
