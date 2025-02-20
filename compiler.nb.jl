@@ -25,11 +25,11 @@ Base.showerror(io::IO, e::TypeMismatchError) =
 struct Env
 	var_types::Dict{Symbol, Symbol}
 	func_types::Dict{Symbol, Any}
-	
+
 	function Env()
 		new(Dict(), Dict())
 	end
-	
+
 	function Env(pairs...)
 		new(Dict(pairs...), Dict())
 	end
@@ -57,6 +57,7 @@ md"""
   - [ ] Normalización (lowering/desugaring)
   - [ ] Errores
 - [ ] Compilación
+- [ ] Tests (hacen más fácil demostrar cada celda)
 - [ ] Referencias
 - [ ] Presentación
   - [ ] Table of Contents
@@ -160,9 +161,9 @@ end;
 # ╔═╡ ae62d583-5d18-4638-8d15-1dc712251172
 function analyze(::Val{:(=)}, args, env)
 	(lhs, rhs) = args
-	
+
 	rtype = analyze(rhs, env)
-	
+
 	if lhs isa Symbol
 		if lhs in env 							# Existing variable. Compare types.
 			if env[lhs] != rtype
@@ -179,14 +180,14 @@ function analyze(::Val{:(=)}, args, env)
 	elseif lhs isa Expr && lhs.head == :call 	# Short function
 		analyze(Expr(:function, lhs, Expr(:block, rhs)))
 	else
-		(var, type) = type_pattern(lhs)			
+		(var, type) = type_pattern(lhs)
 		env[var] = ltype						# New variable. Assert type.
 	end
 	return rtype
 end;
 
 # ╔═╡ 081eb9fc-4a0e-42fa-8e76-b4d8bbcc8bca
-function analyze_signature(sig::Expr, env::Env)
+function analyze_signature(sig::Expr, env)
 	if sig.head == :(::)
 		(fname, _, pnames, ptypes) = analyze_signature(sig.args[1], env)
 		ret_type = sig.args[2]
@@ -224,64 +225,51 @@ function analyze(::Val{:function}, args, env)
 	return last_type
 end;
 
-# ╔═╡ 29c7ed38-3eca-4d59-aa83-4acfd25ffa26
-function analyze(::Val{:call}, args, env)
-	fname = args[1]
-	fargs = args[2:end]
+# ╔═╡ 001f39f8-c254-48a3-acc2-d64a8344b5dd
+isfloat(t) = t == :Float32 || t == :Float64
 
-	argument_types = map(a -> analyze(a, env), fargs)
-	if fname in keys(env.func_types)
-		(param_types, ret_type) = env.func_types[fname]
-		if !all(param_types .== argument_types)
-			throw(TypeMismatchError(
-				"Function `$fname` expected `$param_types`, but got $argument_types"
-			))
-		end
-		return ret_type
-	else
-		throw(CompilerError("Undefined function: `$fname`"))
-	end
-end;
+# ╔═╡ 8d7a8f03-5a48-439b-8012-1165ae470f3d
+f_un_ops = (
+	abs     = :abs,
+	-       = :neg,
+	sqrt    = :sqrt,
+	√       = :sqrt,
+)
 
-# ╔═╡ 2905c457-1d80-440e-b046-9ca1cb420e81
-md"# TODO: ARITHMETIC"
-
-# ╔═╡ 2d399f80-ec50-4b71-89a2-2e4e8ecf19e6
-i_bin_op = (
+# ╔═╡ 348cec8f-2002-4972-ad32-932fe3ac4e15
+f_bin_ops = (
 	+ = :add,
 	- = :sub,
 	* = :mul,
 	/ = :div,
-	% = :rem,
-	
+	min      = :min,
+	max      = :max,
+	copysign = :copysign,
 	== = :eq,
 	!= = :ne,
-	< = :lt,
-	> = :ge,
-	<= = :lt,
-	>= = :ge,
+	<  = :lt,
+	>  = :gt,
+	<= = :le,
+	>= = :gt,
+)
+
+# ╔═╡ 2d399f80-ec50-4b71-89a2-2e4e8ecf19e6
+i_bin_ops = (
+   +  = :add,
+   -  = :sub,
+   *  = :mul,
+   /  = :div,
+   %  = :rem,
+   == = :eq,
+   != = :ne,
+   <  = :lt,
+   >  = :ge,
+   <= = :lt,
+   >= = :ge,
 );
 
-# ╔═╡ 7162fa35-ee10-49f8-837f-881a5a5928e3
-f_bin_op = (
-	+ = :add,
-	- = :sub,
-	* = :mul,
-	/ = :div,
-);
-
-# ╔═╡ bd431f34-9ef3-4892-87c1-c0a1b87ef0d9
-f_un_op = (
-	- = :neg,
-	√ = :sqrt,
-	abs = :abs,
-	neg = :neg,
-	sqrt = :sqrt,
-	ceil = :ceil,
-	floor = :floor,
-	trunc = :trunc,
-	nearest = :nearest,
-);
+# ╔═╡ 80379f3b-4c3a-46cd-b1a1-fc14f67052a0
+builtins = union(keys.([f_un_ops, f_bin_ops, i_bin_ops])...)
 
 # ╔═╡ 41c29c01-6af6-4b2d-bcc8-60e44a99ce34
 abstract type NumericOp end
@@ -298,6 +286,64 @@ struct UnaryOp <: NumericOp
 	t::Symbol
 end
 
+# ╔═╡ fb7b2997-731c-4a92-b359-82f17b8db299
+function analyze_builtins(op, types)
+	arity = length(types)
+	if arity == 1 && op in keys(f_un_ops)
+		if isfloat(types[1])
+			return (types[1], UnaryOp(op, types[1]))
+		else
+			throw(TypeMismatchError(
+				"Operator `$op` expected a Float type, but got type `$type`."
+			))
+		end
+	elseif arity == 2
+		(ltype, rtype) = types
+		if ltype == rtype
+			if isfloat(ltype) && op in keys(f_bin_ops)
+				return (ltype, BinaryOp(op, ltype))
+			elseif op in keys(i_bin_ops)
+				return (ltype, BinaryOp(op, ltype))
+			else
+				throw(TypeMismatchError(
+					"Operator `$op` is not defined for type: `$ltype`."
+				))
+			end
+		else
+			throw(TypeMismatchError(
+				"Operator `$op` got different types: `$ltype` and `$rtype`."
+			))
+		end
+	else
+		throw(TypeMismatchError(
+			"Unexpected number of arguments for `$op`."
+		))
+	end
+end;
+
+# ╔═╡ 29c7ed38-3eca-4d59-aa83-4acfd25ffa26
+function analyze(::Val{:call}, args, env)
+	fname = args[1]
+	fargs = args[2:end]
+
+	fargs_types = map(a -> analyze(a, env), fargs)
+	if fname in keys(env.func_types)
+		(param_types, ret_type) = env.func_types[fname]
+		if !all(param_types .== fargs_types)
+			throw(TypeMismatchError(
+				"Function `$fname` expected types $param_types, but got types $fargs_types"
+			))
+		end
+		return ret_type
+	elseif fname in builtins
+		(ret_type, concrete_op) = analyze_builtins(fname, fargs_types)
+		args[1] = concrete_op
+		return ret_type
+	else
+		throw(CompilerError("Undefined function: `$fname`"))
+	end
+end;
+
 # ╔═╡ 4834f3ed-eb2a-4ec3-9575-8fd3777d248e
 function Base.show(io::IO, cop::NumericOp)
 	# Note: Use subscript `p` because Unicode doesn't have subscript `f`
@@ -313,18 +359,16 @@ function Base.show(io::IO, cop::NumericOp)
 	return
 end
 
+# ╔═╡ 9d6afbad-e03f-46e7-8fd6-24817016ad81
+md"# TODO: Conversions"
+
 # ╔═╡ 23370e6c-bc0a-44e6-b434-aa6ff21d5875
 md"# tests"
 
 # ╔═╡ 639fc9ea-f5f0-44e5-b2a5-2bb206e4a334
 let ex = quote
-	function g(y::Int64)::Float64
-		1.0
-	end
-	
-	function f(x::Int64)::Float64
-		g(x)
-	end
+	1 + 2
+	1.0 + 2.0
 end
 	analyze(ex)
 	ex
@@ -357,13 +401,16 @@ end
 # ╠═0779191f-61c2-405a-804b-a09063599d92
 # ╠═081eb9fc-4a0e-42fa-8e76-b4d8bbcc8bca
 # ╠═29c7ed38-3eca-4d59-aa83-4acfd25ffa26
-# ╟─2905c457-1d80-440e-b046-9ca1cb420e81
+# ╠═001f39f8-c254-48a3-acc2-d64a8344b5dd
+# ╠═fb7b2997-731c-4a92-b359-82f17b8db299
+# ╠═8d7a8f03-5a48-439b-8012-1165ae470f3d
+# ╠═348cec8f-2002-4972-ad32-932fe3ac4e15
 # ╠═2d399f80-ec50-4b71-89a2-2e4e8ecf19e6
-# ╠═7162fa35-ee10-49f8-837f-881a5a5928e3
-# ╠═bd431f34-9ef3-4892-87c1-c0a1b87ef0d9
+# ╠═80379f3b-4c3a-46cd-b1a1-fc14f67052a0
 # ╠═41c29c01-6af6-4b2d-bcc8-60e44a99ce34
 # ╠═bec5b494-4361-480d-af54-5c40b2515214
 # ╠═b0649857-c064-4308-90ba-b2732d5646a7
 # ╠═4834f3ed-eb2a-4ec3-9575-8fd3777d248e
+# ╟─9d6afbad-e03f-46e7-8fd6-24817016ad81
 # ╟─23370e6c-bc0a-44e6-b434-aa6ff21d5875
 # ╠═639fc9ea-f5f0-44e5-b2a5-2bb206e4a334
