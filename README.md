@@ -1,9 +1,13 @@
-# Metaprogramming & Compiling to WebAssembly
+# jl2wasm
 
-This repository contains notebooks on metaprogramming in Julia, and compiling
-to WebAssembly.
+A Compiler from a subset of Julia to WebAssembly
 
-TO-DO:
+Sergio Alejandro Vargas Q.\
+savargasqu@unal.edu.co\
+Compiladores 2024-II\
+Universidad Nacional de Colombia
 
-- Rewrite as a proper 2 stage compiler (see notebook end notes)
-- Generate static HTML version of the notebook (and serve with gh pages)
+## TO DO
+
+- [ ] GitHub page
+- [ ] Video
