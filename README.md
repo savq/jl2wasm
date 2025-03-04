@@ -7,7 +7,4 @@ savargasqu@unal.edu.co\
 Compiladores 2024-II\
 Universidad Nacional de Colombia
 
-## TO DO
-
-- [ ] GitHub page
-- [ ] Video
+A static version of the notebook is available at [savq.github.io/jl2wasm/](https://savq.github.io/jl2wasm/)
