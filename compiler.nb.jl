@@ -6,10 +6,10 @@ using InteractiveUtils
 
 # ╔═╡ 2a00780f-4322-455f-af3e-eba952abf64b
 begin
-	using Test
 	using HypertextLiteral: @htl
 	using AbstractPlutoDingetjes.Display: published_to_js;
 	using PlutoUI: TableOfContents
+	using Test: @testset, @test, @test_throws
 end
 
 # ╔═╡ d5d9447f-c0db-4810-89d7-0e4ce1566e86
@@ -18,21 +18,16 @@ TableOfContents()
 # ╔═╡ 4acb880b-60a0-42d6-bfea-26935426b30c
 run(`type wasm-tools`);
 
-# ╔═╡ 2163ebda-6741-4390-b79c-4d3fe6fc9b4b
-:x
-
-# ╔═╡ 24534cd6-a102-4d5e-80c6-f75e158e4fbf
-typeof(:x)
-
 # ╔═╡ 1096a6cc-636d-486b-8ccd-5309ae231efa
-let e = :(f(x) + 1)
-	@debug sprint(dump, e) # Get verbose representation
+let e = :(x + 1)
+
+	@debug sprint(dump, e)
 end
 
 # ╔═╡ b05e6426-2c26-455e-b18c-12676e25ba2b
 struct Env
 	var_types::Dict{Symbol, Symbol}					# V => T
-	func_types::Dict{Symbol, Tuple{Tuple, Symbol}}	# F => (Tₚ, ...) -> Tᵣₑₜ
+	func_types::Dict{Symbol, Tuple{Any, Symbol}}	# F => (Tₚ, ...) -> Tᵣₑₜ
 
 	# Constructors
 	Env() = new(Dict(), Dict())
@@ -63,7 +58,7 @@ Universidad Nacional de Colombia
 md"""
 # Dependencies
 
-A couple of package to load our wasm binary in the browser.
+A couple of package to load wasm binaries in the browser.
 """
 
 # ╔═╡ 222c8445-0ca9-42e1-b26a-12953a3c910f
@@ -76,8 +71,6 @@ md"""
 # ╔═╡ a5a3c821-f111-4951-bf69-56b1bb70d4bb
 md"""
 # Target Language: WebAssembly
-
-WebAssembly is neither web nor assembly... Instead:
 
 - Binary instruction format
 - Stack-based virtual machine
@@ -103,7 +96,7 @@ We'll compile to WebAssembly Text Format (**wat**), not directly to binary.
 
 # ╔═╡ bee64a4a-0b1b-449d-bc9a-2844f4ff3b36
 md"""
-# Source language: Mini-Julia
+# Source Language: Mini-Julia
 
 Take a very small subset of Julia:
 
@@ -130,23 +123,13 @@ end
 
 # ╔═╡ 49d328d5-a16d-4510-b07b-a9cc908c8310
 md"""
-# Parsing
+# Syntactic Analysis
 
 Use Julia metaprogramming to get parsing for free.
 
 Julia represents its own source code using the `Expr` and `Symbol` types.
 
-`quote` or `:` return the AST of an expression.
-"""
-
-# ╔═╡ aeee5645-eead-40d5-af78-e8cdae89376b
-md"""
-Symbols represent identifiers.
-"""
-
-# ╔═╡ 3b824756-e098-452a-aeac-4b07088834c1
-md"""
-`Expr` represents expressions. Every `Expr` has
+Every `Expr` has
 - A `head` indicating the kind of expression it is (definition, call, etc.)
 - An `args` vector pointing to the child nodes of the expression.
 """
@@ -179,7 +162,7 @@ Environments don't keep a reference to their parent environments, When we need n
 
 # ╔═╡ 3a7d3660-8e3f-40f1-a08f-06cf1b5762d7
 md"""
-Define a few helper functions to query and update the variables' table.
+Define helper functions to query and update the variables' table.
 
 No helper methods for the functions' table, tho.
 
@@ -215,9 +198,7 @@ Base.showerror(io::IO, e::TypeMismatchError) =
 
 # ╔═╡ aa9787e9-ed71-4a23-becc-e959bb9b5047
 md"""
-Use a macros to throw error more easily.
-
-(If we used functions they'd show up in the call stack!)
+Use a macros to throw error more easily. (If we used functions they'd show up in the call stack!)
 """
 
 # ╔═╡ bdba6817-5fe4-4dd5-941b-d4c57535244e
@@ -296,7 +277,7 @@ function analyze!(var::Symbol, env)
 	else
 		@compiler_error "Undefined variable: $var"
 	end
-end
+end;
 
 # ╔═╡ 744ea5d8-98a7-42e0-9f8f-0f5ac43509e8
 md"For example,"
@@ -307,7 +288,7 @@ md"""
 
 Numbers are stored directly in the AST (not as symbols).
 
-Wasm only has integers and floats of 32 and 64 bits. Smaller numbers need to be promoted.
+Wasm only has integers and floats of 32 and 64 bits. Smaller number types need to be promoted.
 """
 
 # ╔═╡ b6a962ea-29fe-4b84-892c-2cffd06fc776
@@ -324,7 +305,7 @@ end;
 md"""
 ### A note on booleans
 
-In wasm, 32 bit integers serve as booleans (like in C).
+In wasm, 32-bit integers (`i32`) serve as booleans, like in C.
 
 In Julia, `Bool <: Integer`. Using the method above, we got booleans for free 🤷
 
@@ -344,7 +325,7 @@ end
 
 # ╔═╡ 9b39f2b3-f304-4ca5-b978-138d581b6131
 function analyze!(::Val{:block}, args, env)
-	if length(args) > 0
+	if !isempty(args)
 		last(map(e -> analyze!(e, env), args))
 	else
 		:Nothing
@@ -503,7 +484,7 @@ function analyze!(::Val{:function}, args, env)
 		)
 	end
 
-	# Write local variable declarations
+	# Write local variable declarations at the beginning (Like in K&R C)
 	var_decls = [:(local $v::$t) for (v, t) in pairs(fenv.var_types) if v ∉ pnames]
 	prepend!(body.args, var_decls)
 
@@ -522,6 +503,21 @@ md"""
 ```julia
 f(x, ...)
 ```
+"""
+
+# ╔═╡ bc2545cf-ebdf-401e-b43d-cf735b0c7ad4
+md"For example,"
+
+# ╔═╡ 5accfa8f-0ef2-4960-8a4a-7f4a50798756
+md"""
+## Binary Operators
+
+In binary expressions, both sides need to be of the same type.
+"""
+
+# ╔═╡ 4cc4abf2-98a7-4d1c-b8b6-aec96ac04637
+md"""
+## Unary Operators
 """
 
 # ╔═╡ 8fa0fc6a-fb9e-4737-9888-98571f322e97
@@ -573,6 +569,16 @@ f_un_ops = (
 	√    = :sqrt,
 );
 
+# ╔═╡ 7427d9fc-e910-4c97-a2ae-704180dd206e
+function analyze_unary(op, t)
+	if t in keys(float_types)
+		instr = f_un_ops[op]
+		return (instr, t, t)
+	else
+		@type_mismatch("Operator `$op` is not defined for type: `$t`.")
+	end
+end;
+
 # ╔═╡ 348cec8f-2002-4972-ad32-932fe3ac4e15
 f_bin_ops = (
 	+ = :add,
@@ -613,16 +619,6 @@ rel_ops = (
 	>= = :gt,
 );
 
-# ╔═╡ 80379f3b-4c3a-46cd-b1a1-fc14f67052a0
-operators = union(keys.([f_un_ops, f_bin_ops, i_bin_ops, rel_ops])...)
-
-# ╔═╡ 5accfa8f-0ef2-4960-8a4a-7f4a50798756
-md"""
-## Binary Operators
-
-In binary expressions, both sides need to be of the same type.
-"""
-
 # ╔═╡ fb7b2997-731c-4a92-b359-82f17b8db299
 function analyze_binary(op, ltype, rtype)
 	if ltype == rtype
@@ -646,20 +642,8 @@ function analyze_binary(op, ltype, rtype)
 	end
 end;
 
-# ╔═╡ 4cc4abf2-98a7-4d1c-b8b6-aec96ac04637
-md"""
-## Unary Operators
-"""
-
-# ╔═╡ 7427d9fc-e910-4c97-a2ae-704180dd206e
-function analyze_unary(op, t)
-	if t in keys(float_types)
-		instr = f_un_ops[op]
-		return (instr, t, t)
-	else
-		@type_mismatch("Operator `$op` is not defined for type: `$t`.")
-	end
-end;
+# ╔═╡ 80379f3b-4c3a-46cd-b1a1-fc14f67052a0
+operators = union(keys.([f_un_ops, f_bin_ops, i_bin_ops, rel_ops])...)
 
 # ╔═╡ 29c7ed38-3eca-4d59-aa83-4acfd25ffa26
 function analyze!(::Val{:call}, args, env)
@@ -789,22 +773,27 @@ let Γ = Env()
 end
 
 # ╔═╡ 9ce27d00-622e-42ed-a226-99e0921f32ad
-@testset begin
+@testset "Assignments" begin
+
 	@test analyze!(quote
-		x::Int64 = 1
-		x = 2
-		x
+		a::Int64 = 1 			# Explicit type
+		a
+	end) == :Int64
+
+	@test analyze!(quote
+		b = 2 					# Implicit type
+		b
 	end) == :Int64
 
 	@test_throws TypeMismatchError analyze!(quote
-			x::Int64 = 1
-			x = 2.0
-			x
+			c::Int64 = 1
+			c = 2.0 			# Cannot assign to Float!
+			c
 	end)
 
 	@test_throws CompilerError analyze!(quote
 			x::Int64 = 1
-			x::Float64 = 2.0
+			x::Float64 = 2.0 	# Cannot redeclare type!
 	end)
 end
 
@@ -1073,7 +1062,7 @@ function compile(::Val{:if}, args)
 end;
 
 # ╔═╡ cc71a919-3a1f-47a0-a3d5-02d812e0bdc0
-let e = :(x = y)
+let e = :(y = 1; x = y)
 	@debug compile(e)
 end
 
@@ -1086,13 +1075,14 @@ end
 md"""
 # Assembly
 
-Define helper function to send wat to `wasm-tools`.
-
-Define helper `@wasm` macro to perform all stages of compilation.
+Define function to send wat to `wasm-tools`.
 """
 
 # ╔═╡ 0f6d4436-c7ea-495f-957a-848613de460f
 assemble(wat) = read(pipeline(IOBuffer(wat), `wasm-tools parse`));
+
+# ╔═╡ 077e4867-868f-4178-8a70-9d2a70537abc
+md"Define `@wasm` macro to perform all stages of compilation."
 
 # ╔═╡ 5b015e2e-d1d0-46ef-97e7-9f57cc0ed654
 macro wasm(expr)
@@ -1106,7 +1096,7 @@ macro wasm(expr)
 end;
 
 # ╔═╡ 13b3d646-db95-4779-8766-167626827ec9
-@wasm module HelloWasm
+@wasm module _
 	function inc(x::Int64)::Int64
 		x + 1
 	end
@@ -1120,7 +1110,7 @@ md"""
 # ╔═╡ 639fc9ea-f5f0-44e5-b2a5-2bb206e4a334
 bin =
 	@wasm module _
-		export fibo, gcd, dist
+		export gcd, fibo, dist
 
 		function my_abs(n::Int64)::Int64
 		    mask = (n >> 63)
@@ -1145,8 +1135,17 @@ bin =
 			end
 		end
 
-		function dist(x::Float32, y::Float32)::Float32
-			√(x*x + y*y)
+		function square(x::Float32)::Float32
+			x * x
+		end
+
+		function dist(
+			p1::Float32,
+			p2::Float32,
+			q1::Float32,
+			q2::Float32,
+		)::Float32
+			√(square(p1 - q1) + square(p2 - q2))
 		end
 	end
 
@@ -1204,7 +1203,7 @@ let elem = gensym()
 		<script>
 			const func = wasmInstance.exports['dist'];
 
-			let result = func(1.0, 1.0);
+			let result = func(0.0, 0.0, 1.0, 1.0);
 
 			let output = `<p>\${result}</p>`;
 
@@ -1219,15 +1218,16 @@ md"""
 # Improvements
 
 - Use more Wasm features to implement a bigger subset of Julia:
-  - Loops!
+  - Loops
   - Convertions between integers and floats
-  - Linear memory for arrays or structs
-  - Indirect calls and function tables for anonymous functions or methods
+  - Multiple return values
+  - Linear memory for arrays
+  - Indirect calls and function tables for 1st class functions or methods
 
-- Add another pass for optimizations?
+- More Julia syntax:
+  - Math functions, `f(x) = ...`
 
 - Use `LineNumberNode` for better error messages, just like the real Julia compiler.
-
 """
 
 # ╔═╡ b3120fe8-ddeb-46e9-82ea-33a5ba91722e
@@ -1547,10 +1547,6 @@ version = "17.4.0+2"
 # ╟─a5a3c821-f111-4951-bf69-56b1bb70d4bb
 # ╟─bee64a4a-0b1b-449d-bc9a-2844f4ff3b36
 # ╟─49d328d5-a16d-4510-b07b-a9cc908c8310
-# ╟─aeee5645-eead-40d5-af78-e8cdae89376b
-# ╠═2163ebda-6741-4390-b79c-4d3fe6fc9b4b
-# ╠═24534cd6-a102-4d5e-80c6-f75e158e4fbf
-# ╟─3b824756-e098-452a-aeac-4b07088834c1
 # ╠═1096a6cc-636d-486b-8ccd-5309ae231efa
 # ╟─b68ac919-095d-40f8-9bd9-a3a5ee62c484
 # ╟─0b71a7f1-86cc-4034-98ba-9aa1bb32c3cb
@@ -1599,7 +1595,14 @@ version = "17.4.0+2"
 # ╠═92344bda-acba-417c-8d32-1e2a6ed1341d
 # ╟─ade2233f-5253-43da-a95f-84682d9299b4
 # ╠═29c7ed38-3eca-4d59-aa83-4acfd25ffa26
+# ╟─bc2545cf-ebdf-401e-b43d-cf735b0c7ad4
 # ╠═d0374658-917b-412a-a23a-c02f46c30403
+# ╟─5accfa8f-0ef2-4960-8a4a-7f4a50798756
+# ╠═fb7b2997-731c-4a92-b359-82f17b8db299
+# ╠═8bc1257e-67f9-4234-a956-bf19b7dab1b7
+# ╟─4cc4abf2-98a7-4d1c-b8b6-aec96ac04637
+# ╠═7427d9fc-e910-4c97-a2ae-704180dd206e
+# ╠═3eda0e11-488f-4b31-a5a0-6be2740e830d
 # ╟─8fa0fc6a-fb9e-4737-9888-98571f322e97
 # ╠═41c29c01-6af6-4b2d-bcc8-60e44a99ce34
 # ╠═4834f3ed-eb2a-4ec3-9575-8fd3777d248e
@@ -1613,12 +1616,6 @@ version = "17.4.0+2"
 # ╠═2d399f80-ec50-4b71-89a2-2e4e8ecf19e6
 # ╠═c578e254-2171-4803-b03e-4f910ef655b8
 # ╠═80379f3b-4c3a-46cd-b1a1-fc14f67052a0
-# ╟─5accfa8f-0ef2-4960-8a4a-7f4a50798756
-# ╠═fb7b2997-731c-4a92-b359-82f17b8db299
-# ╠═8bc1257e-67f9-4234-a956-bf19b7dab1b7
-# ╟─4cc4abf2-98a7-4d1c-b8b6-aec96ac04637
-# ╠═7427d9fc-e910-4c97-a2ae-704180dd206e
-# ╠═3eda0e11-488f-4b31-a5a0-6be2740e830d
 # ╟─24c850c6-e9b9-47fb-8d40-34cafc0a5ac0
 # ╠═635f057b-c0f9-4d34-82f6-87b92f7a909f
 # ╠═85b863bc-8091-43b4-ab31-fc406b86b6ed
@@ -1658,6 +1655,7 @@ version = "17.4.0+2"
 # ╠═589c8a1b-f246-476d-8e6e-b7e321829b1b
 # ╟─37b6e4fb-f177-4acb-ac58-a3abc04c12da
 # ╠═0f6d4436-c7ea-495f-957a-848613de460f
+# ╟─077e4867-868f-4178-8a70-9d2a70537abc
 # ╠═5b015e2e-d1d0-46ef-97e7-9f57cc0ed654
 # ╠═13b3d646-db95-4779-8766-167626827ec9
 # ╟─ef86e977-6d6c-4954-82f8-54e79a64f995
