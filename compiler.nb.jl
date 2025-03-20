@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.20.4
+# v0.20.5
 
 using Markdown
 using InteractiveUtils
@@ -52,6 +52,8 @@ savargasqu@unal.edu.co
 
 Compiladores 2024-II\
 Universidad Nacional de Colombia
+
+[Source code repository](https://github.com/savq/jl2wasm)
 """
 
 # ╔═╡ 2b15644f-7898-4373-947f-719055d6ce48
@@ -1260,7 +1262,7 @@ PlutoUI = "~0.7.61"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.11.3"
+julia_version = "1.11.4"
 manifest_format = "2.0"
 project_hash = "3623ad0e4378dffccc8988d0e0a38f34e4800850"
 
